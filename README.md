@@ -16,7 +16,7 @@
 ## How to Use
 
 ### Generate adversarial images by satisfy L2 norm
-```
+```python
 from torchadver.attacker.iterative_gradient_attack import FGM_L2, I_FGM_L2, MI_FGM_L2, M_DI_FGM_L2
 
 
@@ -41,7 +41,7 @@ adv_images = attacker.attack(images, labels) # or adv_images = attacker.attack(i
 ### Generate adversarial images by satisfy Linf norm
 
 
-```
+```python
 from torchadver.attacker.iterative_gradient_attack import FGM_LInf, I_FGM_LInf, MI_FGM_LInf, M_DI_FGM_LInf
 
 
