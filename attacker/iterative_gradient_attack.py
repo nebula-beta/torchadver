@@ -54,12 +54,14 @@ def random_init_delta(x, norm_type, max_norm, mean, std):
         delta.data = delta.data * max_norm
 
     return delta
-def clamp_by_l2_norm(x, max_norm):
-    batch_size = x.shape[0]
-    norm = torch.reshape(torch.norm(torch.reshape(x, shape=[batch_size, -1]), dim=1), shape=[batch_size, 1, 1, 1])
-    # if max_norm > norm, mean current l2 norm of x statisfy the constraint, no need the rescale
+
+def clamp_by_l2_norm(delta, max_norm):
+    batch_size = delta.shape[0]
+    norm = torch.reshape(torch.norm(torch.reshape(delta, shape=[batch_size, -1]), dim=1), shape=[batch_size, 1, 1, 1])
+    # if max_norm > norm, mean current l2 norm of delta statisfy the constraint, no need the rescale
     factor = torch.min(max_norm / norm, torch.ones_like(norm))
-    x = x * factor
+    delta = delta * factor
+    return delta
 
 
 def iterative_gradient_attack(model, loss_fn, targeted, x, y,
