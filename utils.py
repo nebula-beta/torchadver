@@ -4,8 +4,15 @@
 import os
 import numpy as np
 from PIL import Image
+import torch
 
 def save_images(images, mean, std, filenames, output_dir):
+
+    mean = torch.Tensor(mean).reshape([3, 1, 1])
+    std = torch.Tensor(std).reshape([3, 1, 1])
+    if images.is_cuda:
+        mean = mean.cuda()
+        std = std.cuda()
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -77,3 +84,46 @@ class Evaluator(object):
             # res.append(correct_k.mul_(100.0 / batch_size))
 
         return res
+
+def calc_max_norm(images, adv_images, mean, std, norm_type):
+    mean = torch.Tensor(mean).reshape([3, 1, 1])
+    std = torch.Tensor(std).reshape([3, 1, 1])
+    if images.is_cuda:
+        mean = mean.cuda()
+        std = std.cuda()
+
+    # un-normalize the image to [0, 1]
+    adv_images = adv_images * std + mean
+    images = images * std + mean
+
+    if norm_type == 'l1':
+        pass
+    elif norm_type == 'l2':
+        batch_size = images.shape[0]
+        max_norm = torch.max(torch.reshape(torch.norm(torch.reshape(adv_images- images, shape=[batch_size, -1]), dim=1), shape=[batch_size, 1, 1, 1]))
+    elif norm_type == 'linf':
+        max_norm = torch.max(adv_images - images)
+
+    return max_norm
+
+def calc_average_norm(images, adv_images, mean, std, norm_type):
+    mean = torch.Tensor(mean).reshape([3, 1, 1])
+    std = torch.Tensor(std).reshape([3, 1, 1])
+    if images.is_cuda:
+        mean = mean.cuda()
+        std = std.cuda()
+
+    # un-normalize the image to [0, 1]
+    adv_images = adv_images * std + mean
+    images = images * std + mean
+
+    if norm_type == 'l1':
+        pass
+    elif norm_type == 'l2':
+        batch_size = images.shape[0]
+        max_norm = torch.mean(torch.reshape(torch.norm(torch.reshape(adv_images- images, shape=[batch_size, -1]), dim=1), shape=[batch_size, 1, 1, 1]))
+    elif norm_type == 'linf':
+        max_norm = torch.mean(adv_images - images)
+
+    return max_norm
+
