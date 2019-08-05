@@ -15,6 +15,7 @@
 
 ## How to Use
 
+The brief attack process is shown below. More detailed process introduction you can refer to [toturial]().
 ### Generate adversarial images by satisfy L2 norm
 
 **Non-targeted attack**
