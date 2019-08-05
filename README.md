@@ -112,6 +112,7 @@ adv_images = attacker.attack(images, targeted_labels)
 
 ## Citations
 
+More information about adversarial attack about deep learning, refer to [awesome-adversarial-deep-learning](https://github.com/nebula-beta/awesome-adversarial-deep-learning).
 
 
 
