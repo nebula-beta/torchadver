@@ -22,8 +22,7 @@ class Attack(object):
         clip_max = torch.Tensor(clip_max).reshape([channel, 1, 1])
         expand_max_norm = max_norm / std
 
-        # if model.is_cuda:
-        if True:
+        if next(model.parameters()).is_cuda:
             mean = mean.cuda()
             std = std.cuda()
             clip_min = clip_min.cuda()
