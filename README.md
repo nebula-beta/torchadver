@@ -15,7 +15,7 @@
 
 ## How to Use
 
-The brief attack process is shown below. More detailed process introduction you can refer to [toturial]().
+The brief attack process is shown below. More detailed process introduction you can refer to [./examples/toturial.py](https://github.com/nebula-beta/torchadver/blob/master/examples/toturial.py).
 ### Generate adversarial images by satisfy L2 norm
 
 **Non-targeted attack**
