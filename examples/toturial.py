@@ -79,7 +79,6 @@ if __name__ == '__main__':
         adv_images = adversary.attack(images, labels)
         # adv_images = adversary.attack(images)
 
-        # calucate the top1 and top5 accuracy on adv_images
         # step8 : evaluate the accuracy on the adverasial images
         logits = model(adv_images)
         adv_evaluator.add_batch(logits, labels)
