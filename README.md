@@ -2,10 +2,7 @@
 
 ## Introduction
 
-torchadver is a Pytorch tool box for generating adversarial images.
-
-
-
+*torchadver* is a Pytorch tool box for generating adversarial images. The basic adversarial attack are implemented. Such as [FSGM](https://arxiv.org/abs/1412.6572), [I-FGSM](https://arxiv.org/abs/1607.02533), [MI-FGSM](http://openaccess.thecvf.com/content_cvpr_2018/html/Dong_Boosting_Adversarial_Attacks_CVPR_2018_paper.html), [M-DI-FGSM](https://arxiv.org/abs/1803.06978), [C&W](https://ieeexplore.ieee.org/abstract/document/7958570) .etc.
 
 
 
@@ -26,17 +23,22 @@ from torchadver.attacker.iterative_gradient_attack import FGM_L2, I_FGM_L2, MI_F
 mean = [0.5, 0.5, 0.5]
 std = [0.5, 0.5, 0.5]
 
+# images normalized by mean and std
 images, labels = ...
 model = ...
 
-attacker = FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True)
+# use mean and std to determine effective range of pixel of image in channels.
+attacker = FGM_L2(model, loss_fn=nn.CrossEntropyLoss(),
+				  mean=mean, std=std, 
+				  max_norm=4.0, # L2 norm bound
+				  random_init=True)
 
 # for non-targeted attack
 adv_images = attacker.attack(images, labels) # or adv_images = attacker.attack(images)
 ```
 
 
-### Generate adversarial images by satisfy linf norm
+### Generate adversarial images by satisfy Linf norm
 
 
 ```
@@ -46,14 +48,18 @@ from torchadver.attacker.iterative_gradient_attack import FGM_LInf, I_FGM_LInf, 
 mean = [0.5, 0.5, 0.5]
 std = [0.5, 0.5, 0.5]
 
+# images normalized by mean and std
 images, labels = ...
 model = ...
-targeted_labels = ...
 
-attacker = FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True, targeted=True)
+# use mean and std to determine effective range of pixel of image in channels.
+attacker = FGM_L2(model, loss_fn=nn.CrossEntropyLoss(),
+				 mean=mean, std=std,
+				 max_norm=0.1, # Linf norm bound
+				 random_init=True)
 
 # for non-targeted attack
-adv_images = attacker.attack(images, targeted_labels)
+adv_images = attacker.attack(images, labels) # or adv_images = attacker.attack(images)
 ```
 
 
