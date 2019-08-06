@@ -47,79 +47,73 @@ model_class_map = {
         'inceptionresnetv2': (inceptionresnetv2.inceptionresnetv2, './incresv2.ckpt'),
 }
 
+def load_all_models():
+    models = []
+    for model_name in model_class_map.keys():
 
-def get_attack_result(model, device, adversary, mean, std):
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    # if not os.path.exists(ckpt_path):
-    #     print("%s doesn't exists..." % ckpt_path)
-    #     sys.exit()
+        Model = model_class_map[model_name][0]
+        ckpt_path = model_class_map[model_name][1]
+        ckpt_path = os.path.join(sys.path[0], ckpt_path)
 
-    # if torch.cuda.is_available:
-    #     device = torch.device('cuda:%d' % 0)
-    # else:
-    #     device = torch.device('cpu')
+        if not os.path.exists(ckpt_path):
+            print("%s doesn't exists..." % ckpt_path)
+            sys.exit()
 
-    # model = preact_resnet.PreActResNet18()
-    # checkpoint = torch.load(ckpt_path, map_location=device)
-    # model.load_state_dict(checkpoint)
-    # model = model.to(device)
+        if torch.cuda.is_available:
+            device = torch.device('cuda:%d' % 0)
+        else:
+            device = torch.device('cpu')
 
-    # step2 : define dataloader
-    batch_size = 4
-    num_workers = 4
+        model = Model()
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(checkpoint)
+        model = model.to(device)
+
+        models.append((model_name, model))
+
+    return models
+
+def get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std):
+
+
+    # define dataloader
+    batch_size = 32
+    num_workers = 32
     train_loader = cifar10.get_train_loader(batch_size, num_workers, shuffle=False)
     val_loader = cifar10.get_val_loader(batch_size, num_workers)
 
-    # step3 : define evaluator
-    ori_evaluator = Evaluator() # evaluate the accuracy before the attack
-    adv_evaluator = Evaluator() # evaluate the accuracy after the attack
 
-
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
-    # mean = [0.5, 0.5, 0.5]
-    # std = [0.5, 0.5, 0.5]
-
-    # adversary = FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True)
-    # adversary = FGM_LInf(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=0.1, random_init=True)
-    # adversary = I_FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True)
-    # adversary = I_FGM_LInf(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=0.1, random_init=True)
-    # adversary = MI_FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True)
-    # adversary = MI_FGM_LInf(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=0.1, random_init=True)
-    # adversary = M_DI_FGM_L2(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=4.0, random_init=True)
-    # adversary = M_DI_FGM_LInf(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, max_norm=0.1, random_init=True)
-
+    defense_ori_evaluators = [Evaluator() for i in range(len(defense_models))]
+    defense_adv_evaluators = [Evaluator() for i in range(len(defense_models))]
 
     # tbar = tqdm(train_loader)
     tbar = tqdm(val_loader)
-    tot = 0
     for sample in tbar:
 
         images = sample[0].to(device)
         labels = sample[1].to(device)
 
-        # step6 : evaluate the accuracy on the origin images
-        logits = model(images)
-        ori_evaluator.add_batch(logits, labels)
 
-
-        # step7 : attack
+        # attack
         adv_images = adversary.attack(images, labels)
         # adv_images = adversary.attack(images)
 
-        # step8 : evaluate the accuracy on the adverasial images
-        logits = model(adv_images)
-        adv_evaluator.add_batch(logits, labels)
+        # defense
+        for ori_evaluator, adv_evaluator, defense_model_tuple in zip(defense_ori_evaluators, defense_adv_evaluators, defense_models):
+            defense_model_name = defense_model_tuple[0]
+            defense_model = defense_model_tuple[1]
+            logits = defense_model(images)
+            adv_logits = defense_model(adv_images)
 
+            ori_evaluator.add_batch(logits, labels)
+            adv_evaluator.add_batch(adv_logits, labels)
 
 
         # step9 : save the adversarial images
-        filenames = [ '%05d.png' % (tot + i) for i in range(batch_size) ]
-        save_images(adv_images, mean, std, filenames, './adv_images')
-        batch_size = images.shape[0]
-        tot += batch_size
+        # filenames = [ '%05d.png' % (tot + i) for i in range(batch_size) ]
+        # save_images(adv_images, mean, std, filenames, './adv_images')
+        # batch_size = images.shape[0]
+        # tot += batch_size
 
 
         # (optimal step) : print the attack result by per-batch
@@ -144,48 +138,36 @@ def get_attack_result(model, device, adversary, mean, std):
         # print('ave linf norm : ', max_linf_norm.item())
 
 
+    results = []
+    for ori_evaluator, adv_evaluator, defense_model_tuple in zip(defense_ori_evaluators, defense_adv_evaluators, defense_models):
+        defense_model_name = defense_model_tuple[0]
 
-    # step10 : print the comparison result
-    ori_top1 = ori_evaluator.get_top1()
-    ori_top5 = ori_evaluator.get_top5()
-    adv_top1 = adv_evaluator.get_top1()
-    adv_top5 = adv_evaluator.get_top5()
-    print('Before attack | top1 : %.4f, top5 : %.4f' % (ori_top1, ori_top5))
-    print('After attack  | top1 : %.4f, top5 : %.4f' % (adv_top1, adv_top5))
+        print('Defense model : ', defense_model_name)
+        # print the comparison result
+        ori_top1 = ori_evaluator.get_top1()
+        ori_top5 = ori_evaluator.get_top5()
+        adv_top1 = adv_evaluator.get_top1()
+        adv_top5 = adv_evaluator.get_top5()
+        print('Before attack | top1 : %.4f, top5 : %.4f' % (ori_top1, ori_top5))
+        print('After attack  | top1 : %.4f, top5 : %.4f' % (adv_top1, adv_top5))
 
-    return ori_top1, ori_top5, adv_top1, adv_top5
+        result = (defense_model_name, (ori_top1, ori_top5, adv_top1, adv_top5))
+        results.append(result)
+
+    return results
 
 
 
 
 
-def _experiment_random_init(model_name):
-    Model = model_class_map[model_name][0]
-    ckpt_path = model_class_map[model_name][1]
-    '''
-    Dose random init lead to higher attack success rates?
-    '''
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    ckpt_path = os.path.join(sys.path[0], ckpt_path)
-    if not os.path.exists(ckpt_path):
-        print("%s doesn't exists..." % ckpt_path)
-        sys.exit()
+def _experiment_random_init(target_model_name, target_model, defense_models):
 
-    if torch.cuda.is_available:
+    if next(target_model.parameters()).is_cuda:
         device = torch.device('cuda:%d' % 0)
     else:
         device = torch.device('cpu')
 
-    # model = preact_resnet.PreActResNet18()
-    model = Model()
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model = model.to(device)
 
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
     mean = [0.5, 0.5, 0.5]
     std = [0.5, 0.5, 0.5]
 
@@ -217,62 +199,39 @@ def _experiment_random_init(model_name):
 
     for experiment_name, Attacker, params in experiment_setup_for_l2_bound:
         print(experiment_name+'...')
-        adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-        ori_top1, ori_top5, adv_top1, adv_top5 = \
-        get_attack_result(model, device, adversary, mean, std)
+        adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+        results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-        result = (experiment_name, ori_top1, ori_top5, adv_top1, adv_top5)
-        experiment_results_for_l2_bound.append(result)
+        experiment_results_for_l2_bound.append((experiment_name, results))
 
 
     experiment_results_for_linf_bound = []
 
     for experiment_name, Attacker, params in experiment_setup_for_linf_bound:
         print(experiment_name+'...')
-        adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-        ori_top1, ori_top5, adv_top1, adv_top5 = \
-        get_attack_result(model, device, adversary, mean, std)
+        adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+        results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-        result = (experiment_name, ori_top1, ori_top5, adv_top1, adv_top5)
-        experiment_results_for_linf_bound.append(result)
+        experiment_results_for_linf_bound.append((experiment_name, results))
 
-    return experiment_results_for_l2_bound, experiment_results_for_linf_bound
+    return ('l2_bound', experiment_results_for_l2_bound), ('linf_bound', experiment_results_for_linf_bound)
 
 
 def experiment_random_init():
-    for model_name in model_class_map.keys():
-        print('Target model : ', model_name)
-        experiment_results = _experiment_random_init(model_name)
+    models = load_all_models()
+
+    for target_model_name, target_model in models:
+        print('Target model : ', target_model_name)
+        experiment_results = _experiment_random_init(target_model_name, target_model, models)
         print(experiment_results)
 
 
-def _experiment_different_max_norm(model_name):
-    Model = model_class_map[model_name][0]
-    ckpt_path = model_class_map[model_name][1]
-    '''
-    Dose random init lead to higher attack success rates?
-    '''
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    ckpt_path = os.path.join(sys.path[0], ckpt_path)
-    if not os.path.exists(ckpt_path):
-        print("%s doesn't exists..." % ckpt_path)
-        sys.exit()
+def _experiment_different_max_norm(target_model_name, target_model, defense_models):
 
-    if torch.cuda.is_available:
+    if next(target_model.parameters()).is_cuda:
         device = torch.device('cuda:%d' % 0)
     else:
         device = torch.device('cpu')
-
-    # model = preact_resnet.PreActResNet18()
-    model = Model()
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model = model.to(device)
-
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
     mean = [0.5, 0.5, 0.5]
     std = [0.5, 0.5, 0.5]
 
@@ -295,65 +254,44 @@ def _experiment_different_max_norm(model_name):
 
     for experiment_name, Attacker, multi_params in experiment_setup_for_l2_bound:
         for params in multi_params:
-            print(experiment_name + ' with max_l2_norm = %.3f' % (params['max_norm']))
+            current_experiment_name = '%s with max_l2_norm = %.3f' % (experiment_name, params['max_norm'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['max_norm'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_l2_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
     experiment_results_for_linf_bound = []
     for experiment_name, Attacker, multi_params in experiment_setup_for_linf_bound:
         for params in multi_params:
-            print(experiment_name + ' with max_linf_norm = %.3f' % (params['max_norm']))
+            current_experiment_name = '%s with max_linf_norm = %.3f' % (experiment_name, params['max_norm'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['max_norm'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_linf_bound.append(result)
+            experiment_results_for_linf_bound.append((current_experiment_name, results))
 
-    return experiment_results_for_l2_bound, experiment_results_for_linf_bound
+    return ('l2_bound', experiment_results_for_l2_bound), ('linf_bound', experiment_results_for_linf_bound)
 
 
 
 def experiment_different_max_norm():
-    for model_name in model_class_map.keys():
-        print('Target model : ', model_name)
-        experiment_results = _experiment_different_max_norm(model_name)
+    models = load_all_models()
+
+    for target_model_name, target_model in models:
+        print('Target model : ', target_model_name)
+        experiment_results = _experiment_different_max_norm(target_model_name, target_model, models)
         print(experiment_results)
 
 
-def _experiment_different_num_iter(model_name):
-    Model = model_class_map[model_name][0]
-    ckpt_path = model_class_map[model_name][1]
-    '''
-    Dose random init lead to higher attack success rates?
-    '''
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    ckpt_path = os.path.join(sys.path[0], ckpt_path)
-    if not os.path.exists(ckpt_path):
-        print("%s doesn't exists..." % ckpt_path)
-        sys.exit()
+def _experiment_different_num_iter(target_model_name, target_model, defense_models):
 
-    if torch.cuda.is_available:
+    if next(target_model.parameters()).is_cuda:
         device = torch.device('cuda:%d' % 0)
     else:
         device = torch.device('cpu')
-
-    # model = preact_resnet.PreActResNet18()
-    model = Model()
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model = model.to(device)
-
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
     mean = [0.5, 0.5, 0.5]
     std = [0.5, 0.5, 0.5]
 
@@ -370,62 +308,42 @@ def _experiment_different_num_iter(model_name):
 
     for experiment_name, Attacker, multi_params in experiment_setup_for_l2_bound:
         for params in multi_params:
-            print(experiment_name + ' with num_iter = %d' % (params['num_iter']))
+            current_experiment_name = '%s with num_iter = %d' %(experiment_name, params['num_iter'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['num_iter'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_l2_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
     experiment_results_for_linf_bound = []
     for experiment_name, Attacker, multi_params in experiment_setup_for_linf_bound:
         for params in multi_params:
-            print(experiment_name + ' with num_iter = %d' % (params['num_iter']))
+            current_experiment_name = '%s with num_iter = %d' %(experiment_name, params['num_iter'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['num_iter'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_linf_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
-    return experiment_results_for_l2_bound, experiment_results_for_linf_bound
+    return ('l2_bound', experiment_results_for_l2_bound), ('linf_bound', experiment_results_for_linf_bound)
 
 def experiment_different_num_iter():
-    for model_name in model_class_map.keys():
-        print('Target model : ', model_name)
-        experiment_results = _experiment_different_num_iter(model_name)
+    models = load_all_models()
+
+    for target_model_name, target_model in models:
+        print('Target model : ', target_model_name)
+        experiment_results = _experiment_different_num_iter(target_model_name, target_model, models)
         print(experiment_results)
 
-def _experiment_different_momentum(model_name):
-    Model = model_class_map[model_name][0]
-    ckpt_path = model_class_map[model_name][1]
-    '''
-    Dose random init lead to higher attack success rates?
-    '''
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    ckpt_path = os.path.join(sys.path[0], ckpt_path)
-    if not os.path.exists(ckpt_path):
-        print("%s doesn't exists..." % ckpt_path)
-        sys.exit()
 
-    if torch.cuda.is_available:
+def _experiment_different_momentum(target_model_name, target_model, defense_models):
+
+    if next(target_model.parameters()).is_cuda:
         device = torch.device('cuda:%d' % 0)
     else:
         device = torch.device('cpu')
-
-    # model = preact_resnet.PreActResNet18()
-    model = Model()
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model = model.to(device)
-
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
     mean = [0.5, 0.5, 0.5]
     std = [0.5, 0.5, 0.5]
 
@@ -436,7 +354,7 @@ def _experiment_different_momentum(model_name):
                                           for momentum in np.linspace(start=0, stop=1.0, num=11)]),
     ]
     experiment_setup_for_linf_bound = [
-            ('MI_FGM_LInf',   MI_FGM_LInf,    [{'max_norm' : 0.1, 'num_iter' : 10, 'momentum' : momentum, 'random_init' : True} 
+            ('MI_FGM_LInf',   MI_FGM_LInf,    [{'max_norm' : 0.1, 'num_iter' : 10, 'momentum' : momentum, 'random_init' : True}
                                           for momentum in np.linspace(start=0, stop=1.0, num=11)]),
     ]
 
@@ -444,64 +362,42 @@ def _experiment_different_momentum(model_name):
 
     for experiment_name, Attacker, multi_params in experiment_setup_for_l2_bound:
         for params in multi_params:
-            print(experiment_name + ' with momentum = %.2f' % (params['momentum']))
+            current_experiment_name = '%s with momentum = %.2f' % (experiment_name, params['momentum'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['momentum'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_l2_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
     experiment_results_for_linf_bound = []
     for experiment_name, Attacker, multi_params in experiment_setup_for_linf_bound:
         for params in multi_params:
-            print(experiment_name + ' with momentum = %.2f' % (params['momentum']))
+            current_experiment_name = '%s with momentum = %.2f' % (experiment_name, params['momentum'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['momentum'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_linf_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
-    return experiment_results_for_l2_bound, experiment_results_for_linf_bound
+    return ('l2_bound', experiment_results_for_l2_bound), ('linf_bound', experiment_results_for_linf_bound)
 
 def experiment_different_momentum():
-    for model_name in model_class_map.keys():
-        print('Target model : ', model_name)
-        experiment_results = _experiment_different_momentum(model_name)
+    models = load_all_models()
+
+    for target_model_name, target_model in models:
+        print('Target model : ', target_model_name)
+        experiment_results = _experiment_different_momentum(target_model_name, target_model, models)
         print(experiment_results)
 
 
 
-def _experiment_different_diversity_prob(model_name):
-    Model = model_class_map[model_name][0]
-    ckpt_path = model_class_map[model_name][1]
-    '''
-    Dose random init lead to higher attack success rates?
-    '''
-    # step1 : define model
-    # ckpt_path = os.path.join(sys.path[0], './preact_resnet18.ckpt')
-    ckpt_path = os.path.join(sys.path[0], ckpt_path)
-    if not os.path.exists(ckpt_path):
-        print("%s doesn't exists..." % ckpt_path)
-        sys.exit()
-
-    if torch.cuda.is_available:
+def _experiment_different_diversity_prob(target_model_name, target_model, defense_models):
+    if next(target_model.parameters()).is_cuda:
         device = torch.device('cuda:%d' % 0)
     else:
         device = torch.device('cpu')
-
-    # model = preact_resnet.PreActResNet18()
-    model = Model()
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model = model.to(device)
-
-    # step4 : define attacker
-    # mean and std used to normalize the images by loader
-    # the attack method need these parameter to detemine the range of image pixels
     mean = [0.5, 0.5, 0.5]
     std = [0.5, 0.5, 0.5]
 
@@ -522,34 +418,35 @@ def _experiment_different_diversity_prob(model_name):
 
     for experiment_name, Attacker, multi_params in experiment_setup_for_l2_bound:
         for params in multi_params:
-            print(experiment_name + ' with diversity_prob = %.2f' % (params['diversity_prob']))
+            current_experiment_name = '%s with diversity_prob = %.2f' % (experiment_name, params['diversity_prob'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['diversity_prob'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_l2_bound.append(result)
+            experiment_results_for_l2_bound.append((current_experiment_name, results))
 
     experiment_results_for_linf_bound = []
     for experiment_name, Attacker, multi_params in experiment_setup_for_linf_bound:
         for params in multi_params:
-            print(experiment_name + ' with diversity_prob = %.2f' % (params['diversity_prob']))
+            current_experiment_name = '%s with diversity_prob = %.2f' % (experiment_name, params['diversity_prob'])
+            print(current_experiment_name)
 
-            adversary = Attacker(model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
-            ori_top1, ori_top5, adv_top1, adv_top5 = \
-            get_attack_result(model, device, adversary, mean, std)
+            adversary = Attacker(target_model, loss_fn=nn.CrossEntropyLoss(), mean=mean, std=std, **params)
+            results = get_attack_result(target_model_name, target_model, defense_models, device, adversary, mean, std)
 
-            result = (experiment_name, params['diversity_prob'], ori_top1, ori_top5, adv_top1, adv_top5)
-            experiment_results_for_linf_bound.append(result)
+            experiment_results_for_linf_bound.append((current_experiment_name, results))
 
-    return experiment_results_for_l2_bound, experiment_results_for_linf_bound
+    return ('l2_bound', experiment_results_for_l2_bound), ('linf_bound', experiment_results_for_linf_bound)
 
 def experiment_different_diversity_prob():
-    for model_name in model_class_map.keys():
-        print('Target model : ', model_name)
-        experiment_results = _experiment_different_diversity_prob(model_name)
+    models = load_all_models()
+
+    for target_model_name, target_model in models:
+        print('Target model : ', target_model_name)
+        experiment_results = _experiment_different_diversity_prob(target_model_name, target_model, models)
         print(experiment_results)
+
 if __name__ == '__main__':
     '''
     experiment1:
@@ -564,13 +461,13 @@ if __name__ == '__main__':
     explore the effect of the different of diversity_prob(and diversity_resize_rate)
     '''
 
-    # experiment1
-    # experiment_random_init()
-    # experiment2
-    # experiment_different_max_norm()
-    # experiment3
-    # experiment_different_num_iter()
-    # experiment4
-    # experiment_different_momentum()
-    # experiment5
+    print("=============================Experiment1=============================")
+    experiment_random_init()
+    print("=============================Experiment2=============================")
+    experiment_different_max_norm()
+    print("=============================Experiment3=============================")
+    experiment_different_num_iter()
+    print("=============================Experiment4=============================")
+    experiment_different_momentum()
+    print("=============================Experiment5=============================")
     experiment_different_diversity_prob()
