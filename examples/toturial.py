@@ -65,6 +65,7 @@ if __name__ == '__main__':
     # tbar = tqdm(train_loader)
     tbar = tqdm(val_loader)
     tot = 0
+    model.eval()
     for sample in tbar:
 
         images = sample[0].to(device)
@@ -122,9 +123,4 @@ if __name__ == '__main__':
     adv_top5 = adv_evaluator.get_top5()
     print('Before attack | top1 : %.4f, top5 : %.4f' % (ori_top1, ori_top5))
     print('After attack  | top1 : %.4f, top5 : %.4f' % (adv_top1, adv_top5))
-
-
-
-
-
 
