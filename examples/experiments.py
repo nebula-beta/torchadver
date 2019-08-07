@@ -238,16 +238,16 @@ def _experiment_different_max_norm(target_model_name, target_model, defense_mode
 
 
     experiment_setup_for_l2_bound = [
-            ('FGM_L2',     FGM_L2,      [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
-            ('I_FGM_L2',   I_FGM_L2,    [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
-            ('MI_FGM_L2',  MI_FGM_L2,   [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
-            ('M_DIFGM_L2', M_DI_FGM_L2, [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
+            ('FGM_L2',     FGM_L2,      [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
+            ('I_FGM_L2',   I_FGM_L2,    [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
+            ('MI_FGM_L2',  MI_FGM_L2,   [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
+            ('M_DIFGM_L2', M_DI_FGM_L2, [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
     ]
     experiment_setup_for_linf_bound = [
-            ('FGM_LInf',     FGM_LInf,      [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
-            ('I_FGM_LInf',   I_FGM_LInf,    [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
-            ('MI_FGM_LInf',  MI_FGM_LInf,   [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
-            ('M_DIFGM_LInf', M_DI_FGM_LInf, [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.1, stop=5.0, num=19)]),
+            ('FGM_LInf',     FGM_LInf,      [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
+            ('I_FGM_LInf',   I_FGM_LInf,    [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
+            ('MI_FGM_LInf',  MI_FGM_LInf,   [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
+            ('M_DIFGM_LInf', M_DI_FGM_LInf, [{'max_norm' : max_norm, 'random_init' : True} for max_norm in np.linspace(start=0.01, stop=0.1, num=19)]),
     ]
 
     experiment_results_for_l2_bound = []
@@ -460,6 +460,23 @@ if __name__ == '__main__':
     experiment5:
     explore the effect of the different of diversity_prob(and diversity_resize_rate)
     '''
+
+
+    class Logger(object):
+        def __init__(self, filename="log.txt"):
+            self.terminal = sys.stdout
+            self.log = open(filename, "w")
+
+        def write(self, message):
+            self.terminal.write(message)
+            self.log.write(message)
+
+        def flush(self):
+            self.log.flush()
+
+    # path = os.path.abspath(os.path.dirname(__file__))
+    sys.stdout = Logger()
+
 
     print("=============================Experiment1=============================")
     experiment_random_init()
